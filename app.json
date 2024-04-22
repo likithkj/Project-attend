@@ -32,6 +32,13 @@
         {
           "fonts": ["./fonts/Lexend-Bold.ttf"]
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photo",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera"
+        }
       ]
       
     ]

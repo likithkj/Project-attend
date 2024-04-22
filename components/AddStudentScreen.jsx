@@ -1,144 +1,155 @@
-import React, { useState } from 'react';
-import { View, Button, Text, StyleSheet, TouchableOpacity, Alert,Image } from 'react-native';
-import { useFonts } from 'expo-font';
-import * as ImagePicker from 'expo-image-picker';
+import { StatusBar } from "expo-status-bar";
+import {
+  StyleSheet,
+  Text,
+  View,
+  Button,
+  Alert,
+  SafeAreaView,
+  TextInput,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { useState } from "react";
+import { uploadToFirebase } from "../firebase-config"; // Assuming you have configured Firebase Storage
 
-const AddStudentScreen = () => {
-  const [fontsLoaded] = useFonts({
-    'Lexend-Bold': require('./../assets/fonts/Lexend-Bold.ttf'),
-    'Lexend-Regular': require('./../assets/fonts/Lexend-Regular.ttf'),
-  });
 
-  const [image, setImage] = useState(null);
+export default function AddStudentScreen() {
+  const [studentId, setStudentId] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [uri, setUri] = useState(null);
 
-  const handleImageUpload = async () => {
-    if (!image) {
-      Alert.alert('Error', 'Please select an image to upload.');
-      return;
-    }
-  
+  const takePhoto = async () => {
     try {
-      const formData = new FormData();
-      formData.append('image', {
-        uri: image.uri,
-        type: 'image/jpeg',
-        name: 'photo.jpg',
+      const cameraResp = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        quality: 1,
       });
-  
-      // Show a prompt screen here if needed
-  
-      const response = await fetch('https://cy7m1ciey5.execute-api.eu-north-1.amazonaws.com/dev/awsgw-sample/test.jpg', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'image/jpeg',
-          // Add any additional headers here
-        },
-        body: formData,
-      });
-  
-      if (!response.ok) {
-        if (response.status === 401) {
-          // Handle unauthorized errors here
-        } else {
-          Alert.alert('Error', 'Failed to upload photo. Please try again.');
-        }
-      } else {
-        Alert.alert('Success', 'Photo uploaded successfully!');
-        // You can handle any further actions upon successful upload
+
+      if (!cameraResp.cancelled) {
+        const { uri } = cameraResp.assets[0];
+        const currentDate = new Date();
+        const fileName = `${currentDate}` || uri.split("/").pop(); // Set filename to studentId if available, otherwise use default from uri
+
+        // Upload image to Firebase Storage
+        const uploadResp = await uploadToFirebase(uri, fileName, (progress) =>
+          console.log("Upload progress:", progress)
+        );
+
+        // Retrieve download URL from Firebase Storage
+        const downloadURL = await uploadResp.downloadUrl;
+
+        // Log download URL to console
+        console.log("Download URL:", downloadURL);
+        sendToServer(downloadURL);
+
+        // Show success message
+        Alert.alert("Success", "Image uploaded successfully");
       }
     } catch (error) {
-      if (error.name === 'TypeError' && error.message.includes('Network Request Failed')) {
-        Alert.alert('Error', 'Failed to connect to the server. Please check your internet connection and try again.');
+      console.error("Error taking photo: ", error);
+      Alert.alert("Error", "Failed to take photo");
+    }
+  };
+
+  const sendToServer = async (downloadURL) => {
+    try {
+      const data = {
+        studentId: studentId,
+        studentName: studentName,
+        uri: downloadURL
+      };
+
+      // Send POST request to Flask server
+      const response = await fetch('http://192.168.0.107:5000/post_example', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      
+      if (response.ok) {
+        Alert.alert("Success", "Data sent successfully");
       } else {
-        console.error('Error uploading photo:', error);
-        Alert.alert('Error', 'An unexpected error occurred. Please try again later.');
+        throw new Error("Failed to send data to server");
       }
+    } catch (error) {
+      console.error("Error sending data to server: ", error);
+      Alert.alert("Error", "Failed to send data to server");
     }
   };
-
-  const handleImagePicker = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permissionResult.granted === false) {
-      Alert.alert('Permission denied', 'Permission to access camera roll is required!');
-      return;
-    }
-
-    const pickerResult = await ImagePicker.launchImageLibraryAsync();
-    if (!pickerResult.cancelled) {
-      setImage(pickerResult);
-    }
-  };
-
-
-
-  const styles = StyleSheet.create({
-    buttonRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginBottom: 10,
-    },
-    button: {
-      backgroundColor: '#EDEDED',
-      paddingVertical: 5,
-      paddingHorizontal: 75,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: '#CCCCCC',
-      width: '50%',
-    },
-    buttonText: {
-      fontFamily: 'Lexend-Bold',
-      fontSize: 12,
-      color: '#333333',
-      textAlign: 'center',
-    },
-    container: {
-      marginHorizontal: 20,
-    },
-    title: {
-      fontFamily: 'Lexend-Bold',
-      fontSize: 24,
-      color: '#333333',
-      marginBottom: 20,
-    },
-    input: {
-      fontFamily: 'Lexend-Regular',
-      fontSize: 16,
-      color: '#333333',
-      borderWidth: 1,
-      borderColor: '#CCCCCC',
-      borderRadius: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 10,
-      marginBottom: 10,
-    },
-    saveButton: {
-      backgroundColor: '#EDEDED',
-      paddingVertical: 5,
-      paddingHorizontal: 75,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: '#CCCCCC',
-      width: '50%',
-    }
-  });
-
+  // main UI
   return (
-    <View>
-      <TouchableOpacity onPress={handleImagePicker} style={styles.button}>
-        <Text style={styles.buttonText}>Select Image</Text>
-      </TouchableOpacity>
-
-      {image && (
-        <View style={styles.imageContainer}>
-          <Text style={styles.imageText}>Selected Image:</Text>
-          <Image source={{ uri: image.uri }} style={styles.image} />
-        </View>
-      )}
-
-      <Button title="Upload" onPress={handleImageUpload} />
-    </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
+        <Text style={styles.title}>Add New Student</Text>
+        <Text style={styles.description}>
+          Enter student ID and student name and upload a picture of the student
+        </Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter Student ID"
+          onChangeText={(text) => setStudentId(text)}
+          value={studentId}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Enter Student Name"
+          onChangeText={(text) => setStudentName(text)}
+          value={studentName}
+        />
+        <StatusBar style="auto" />
+        <Button title="Take Picture" onPress={takePhoto} style={styles.button} />
+      </View>
+    </SafeAreaView>
   );
-};
+}
 
-export default AddStudentScreen;
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
+    paddingHorizontal: 20,
+    justifyContent: "center",
+  },
+  input: {
+    height: 40,
+    borderColor: "gray",
+    borderWidth: 1,
+    marginBottom: 20,
+    paddingHorizontal: 10,
+  },
+  button: {
+    backgroundColor: "#808080",
+    paddingVertical: 10,
+    paddingHorizontal: 100,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: "Lexend-Bold",
+  },
+  title: {
+    fontSize: 24,
+    fontFamily: "Lexend-Bold",
+    marginTop: 10,
+    textAlign: "center",
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  description: {
+    fontSize: 16,
+    fontFamily: "Lexend-Regular",
+    marginTop: 10,
+    textAlign: "center",
+    position: "absolute",
+    top: 50,
+    left: 0,
+    right: 0,
+  },
+});
